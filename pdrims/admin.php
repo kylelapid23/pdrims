@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDRIMS - Admin Management</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@100;200;300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary-dark': '#004D40',
+                        'primary-deep': '#00382E',
+                        'primary-light': '#00796B',
+                        'aid-color': '#A27500',
+                        'aid-color-dark': '#886000',
+                        'report-color': '#800000',
+                        'report-color-dark': '#6a0000',
+                        'admin-color': '#1e3a8a',
+                        'admin-light': '#3b82f6'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: #F6FFF7;
+        }
+        .w-70 { width: 280px; }
+        .nav-link {
+            display: flex; align-items: center; padding: 12px 24px; font-size: 1rem; font-weight: 500; color: #E0E7FF; transition: all 0.2s;
+        }
+        .nav-link:hover { background-color: rgba(0, 121, 107, 0.5); }
+        .nav-link.active { background-color: #00796B; font-weight: 600; color: white; }
+        .nav-link-icon { width: 20px; height: 20px; margin-right: 12px; }
+        
+        .admin-tab {
+            cursor: pointer;
+            padding: 12px 24px;
+            font-weight: 600;
+            font-size: 1rem;
+            border: 1px solid transparent;
+            border-bottom: none;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .active-tab {
+            background: linear-gradient(to right, #004D40, #00796B); 
+            color: white;
+            border-color: #004D40; 
+            border-top-left-radius: 6px;
+            border-top-right-radius: 6px;
+            margin-right: 4px; 
+            position: relative;
+            z-index: 20; 
+        }
+
+        .inactive-tab {
+            background-color: #E5E7EB; 
+            color: #4B5563;
+            border-color: #D1D5DB; 
+            border-top-left-radius: 6px;
+            border-top-right-radius: 6px;
+            margin-right: 4px;
+            border-bottom: 1px solid #D1D5DB;
+            transform: translateY(1px); 
+        }
+
+        .inactive-tab:hover {
+            color: #004D40; 
+            background-color: #F3F4F6;
+        }
+
+        .pending-section-collapsible {
+            max-height: 0;
+            opacity: 0;
+            margin-bottom: 0 !important;
+            transition: max-height 0.5s ease-in-out, opacity 0.5s ease-in-out, margin-bottom 0.5s ease-in-out;
+        }
+        .pending-section-collapsible.expanded {
+            max-height: 1000px; 
+            opacity: 1;
+            margin-bottom: 2rem !important; 
+        }
+    </style>
+   
+    <script>
+        let isSidebarOpen = false;
+
+        let userToDeleteId = null;
+        const MOCK_ADMIN_ID = "admin-001"; 
+
+        let MOCK_USERS = []; // User data will be loaded from API
+
+        let SYSTEM_LOGS = []; // Logs will be loaded from API
+
+        // Helper to get current user correctly (Admin/Official -> sessionStorage, Viewer -> localStorage)
+        function getCurrentUser() {
+            const sessionUser = sessionStorage.getItem('currentUser');
+            if (sessionUser) return JSON.parse(sessionUser);
+            
+            const localUser = localStorage.getItem('currentUser');
+            if (localUser) return JSON.parse(localUser);
+            
+            return {};
+        }
+
+
+
+        let MOCK_INBOX = [
+            { id: 101, category: "Aid Inquiry", sender: "Vin Ysl M. Bacsarsa", subject: "Relief Goods Schedule", date: "2025-11-26", message: "Good morning, I would like to ask when the next batch of relief goods for Purok 2 will be distributed? We have not received the second tranche.", read: false }
+        ];
+
+        function getCategoryColorStyle(category) {
+            if (category === 'Unrecorded Damage') return { bg: 'bg-red-100', text: 'text-red-700', border: 'border-red-200' };
+            if (category === 'Aid Inquiry') return { bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-200' };
+            if (category === 'Profile Update') return { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-200' };
+            return { bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-200' };
+        }
+
+        function confirmLogout() {
+             showModal(`
+                <h2 class="text-2xl font-bold text-red-600 mb-2">Confirm Logout</h2>
+                <p class="text-sm text-gray-500 mb-4">Are you sure you want to sign out of the system?</p>
+                <div class="flex gap-3 mt-6">
+                    <button onclick="hideModal()" class="flex-1 bg-gray-200 text-gray-700 font-semibold py-2 rounded-lg hover:bg-gray-300 transition">
+                        Cancel
+                    </button>
+                    <button onclick="performLogout()" class="flex-1 bg-red-600 text-white font-semibold py-2 rounded-lg hover:bg-red-700 transition shadow-md">
+                        Logout
+                    </button>
+                </div>
+            `, 'max-w-md');
+        }
+
+        function performLogout() {
+            localStorage.removeItem('currentUser');
+            window.location.href = 'landing.php';
+        }
+
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            if (isSidebarOpen) {
+                sidebar.classList.add('-translate-x-full');
+                overlay.classList.add('opacity-0', 'pointer-events-none');
+                overlay.classList.remove('opacity-100', 'pointer-events-auto');
+            } else {
+                sidebar.classList.remove('-translate-x-full');
+                overlay.classList.remove('opacity-0', 'pointer-events-none');
+                overlay.classList.add('opacity-100', 'pointer-events-auto');
+            }
+            isSidebarOpen = !isSidebarOpen;
+        }
+
+        function switchContent(targetId, clickedElement) {
+            document.querySelectorAll('.content-section').forEach(section => section.classList.add('hidden'));
+            
+            const targetSection = document.getElementById(targetId);
+            if (targetSection) targetSection.classList.remove('hidden');
+
+            const headerTitle = document.getElementById('mainTitle');
+            if (headerTitle) headerTitle.textContent = clickedElement.textContent.trim();
+
+            document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
+            clickedElement.classList.add('active');
+
+            if (window.innerWidth < 1024 && isSidebarOpen) toggleSidebar();
+        }
+
+        window.switchAdminTab = (targetId, clickedElement) => {
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.add('hidden');
+            });
+
+            document.querySelectorAll('.admin-tab').forEach(tab => {
+                tab.classList.remove('active-tab');
+                tab.classList.add('inactive-tab');
+                tab.style.borderBottom = '1px solid #D1D5DB';
+            });
+
+            const targetSection = document.getElementById(targetId);
+            if (targetSection) {
+                targetSection.classList.remove('hidden');
+            }
+            
+            clickedElement.classList.remove('inactive-tab');
+            clickedElement.classList.add('active-tab');
+            clickedElement.style.borderBottom = 'none';
+        };
+        
+        function scrollToPendingAccounts() {
+            const pendingSection = document.getElementById('pendingAccountsSection');
+            if (pendingSection) {
+                const isExpanded = pendingSection.classList.contains('expanded');
+                
+                if (isExpanded) {
+                    pendingSection.classList.remove('expanded');
+                    pendingSection.classList.add('pending-section-collapsible');
+                } else {
+                    pendingSection.classList.remove('pending-section-collapsible');
+                    pendingSection.classList.add('expanded');
+                }
+            }
+        }
+
+        function generateUserRow(user) {
+            const statusColor = user.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800';
+            
+            let actionButtons = '';
+            if (user.status === 'Pending') {
+                actionButtons = `
+                    <button onclick="approveUser('${user.id}')" class="text-xs bg-green-50 text-green-700 px-2 py-1 rounded border border-green-200 hover:bg-green-100 mr-2">
+                        Approve
+                    </button>`;
+            } else {
+                actionButtons = '';
+            }
+            
+            actionButtons += `
+                <button onclick="deleteUser('${user.id}')" class="text-xs bg-red-50 text-red-600 px-2 py-1 rounded border border-red-200 hover:bg-red-100">
+                    Delete
+                </button>
+            `;
+
+            return `
+                <tr class="border-b hover:bg-gray-50 transition">
+                    <td class="p-4">
+                        <p class="text-sm font-semibold text-gray-800">${user.name}</p>
+                        <p class="text-xs text-gray-500">ID: ${user.id}</p>
+                    </td>
+                    <td class="p-4 text-sm text-gray-600">${user.email}</td>
+                    <td class="p-4 text-sm">
+                        <span class="block text-xs font-semibold text-gray-700">${user.role}</span>
+                    </td>
+                    <td class="p-4">
+                        <div class="flex flex-col items-start">
+                            <span class="px-2 py-1 rounded-full text-xs font-semibold ${statusColor} mb-1">${user.status}</span>
+                            <span class="text-[10px] text-gray-400">Active: ${user.lastActive}</span>
+                        </div>
+                    </td>
+                    <td class="p-4 text-sm whitespace-nowrap">
+                        ${actionButtons}
+                    </td>
+                </tr>
+            `;
+        }
+
+        function fetchUsers() {
+            fetch('api_admin_users.php')
+                .then(res => res.json())
+                .then(data => {
+                    MOCK_USERS = data;
+                    renderUserTable();
+                })
+                .catch(err => console.error('Error fetching users:', err));
+        }
+
+        function fetchLogs() {
+             fetch('api_logs.php')
+                .then(res => res.json())
+                .then(data => {
+                    if(data.error) {
+                         console.error('Error fetching logs:', data.error);
+                         return;
+                    }
+                    SYSTEM_LOGS = data;
+                    renderLogsTable();
+                })
+                .catch(err => console.error('Error connecting to logs API:', err));
+        }
+
+        function logAction(action, target) {
+             const currentUser = getCurrentUser();
+             const userId = currentUser.id || 'N/A';
+             const userName = currentUser.name || 'System Administrator';
+
+             fetch('api_logs.php', {
+                 method: 'POST',
+                 headers: { 'Content-Type': 'application/json' },
+                 body: JSON.stringify({
+                     user_id: userId,
+                     user_name: userName,
+                     action: action,
+                     target: target
+                 })
+             })
+             .then(res => res.json())
+             .then(data => {
+                 if (data.success) {
+                     fetchLogs(); // Refresh logs after action
+                 }
+             })
+             .catch(err => console.error('Error logging action:', err));
+        }
+
+        function fetchLogs() {
+             fetch('api_logs.php')
+                .then(res => res.json())
+                .then(data => {
+                    if(data.error) {
+                        console.error('Error fetching logs:', data.error);
+                        return;
+                    }
+                    SYSTEM_LOGS = data;
+                    renderLogsTable();
+                })
+                .catch(err => console.error('Error connecting to logs API:', err));
+        }
+
+        function logAction(action, target) {
+             const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+             const userId = currentUser.id || 'N/A';
+             const userName = currentUser.name || 'System Administrator';
+
+             fetch('api_logs.php', {
+                 method: 'POST',
+                 headers: { 'Content-Type': 'application/json' },
+                 body: JSON.stringify({
+                     user_id: userId,
+                     user_name: userName,
+                     action: action,
+                     target: target
+                 })
+             })
+             .then(res => res.json())
+             .then(data => {
+                 if (data.success) {
+                     fetchLogs(); // Refresh logs after action
+                 }
+             })
+             .catch(err => console.error('Error logging action:', err));
+        }
+
+        function renderUserTable() {
+            const pendingUsers = MOCK_USERS.filter(u => u.status === "Pending");
+            const systemUsers = MOCK_USERS.filter(u => (u.type === "official") && u.status === "Active");
+            const residentUsers = MOCK_USERS.filter(u => u.type === 'viewer' && u.status === "Active");
+
+            const pendingBody = document.getElementById('pendingTableBody'); 
+            const officialsBody = document.getElementById('officialsTableBody');
+            const residentsBody = document.getElementById('residentsTableBody');
+            const pendingCountButton = document.getElementById('pendingCountButton'); 
+            const pendingSection = document.getElementById('pendingAccountsSection'); 
+
+            pendingBody.innerHTML = ''; 
+            officialsBody.innerHTML = '';
+            residentsBody.innerHTML = '';
+
+            if (pendingCountButton) {
+                 pendingCountButton.textContent = pendingUsers.length;
+            }
+
+            if (pendingUsers.length > 0) {
+                pendingUsers.forEach(user => {
+                    pendingBody.innerHTML += generateUserRow(user);
+                });
+            } else {
+                pendingBody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500 bg-red-50">No accounts are currently pending approval.</td></tr>';
+            }
+            
+            if(pendingSection) {
+                 pendingSection.classList.remove('expanded');
+                 pendingSection.classList.add('pending-section-collapsible');
+            }
+
+            if (systemUsers.length > 0) {
+                systemUsers.forEach(user => {
+                    officialsBody.innerHTML += generateUserRow(user);
+                });
+            } else {
+                officialsBody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">No active official accounts found.</td></tr>';
+            }
+
+            if (residentUsers.length > 0) {
+                residentUsers.forEach(user => {
+                    residentsBody.innerHTML += generateUserRow(user);
+                });
+            } else {
+                residentsBody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">No active resident viewer accounts found.</td></tr>';
+            }
+        }
+
+        function deleteUser(id) {
+            const user = MOCK_USERS.find(u => u.id === id);
+            if (user) {
+                userToDeleteId = id;
+                document.getElementById('deleteUserName').textContent = user.name;
+                document.getElementById('deleteConfirmationModal').classList.remove('hidden');
+                document.getElementById('adminPasswordInput').value = ''; 
+            }
+        }
+
+        function cancelDelete() {
+            userToDeleteId = null;
+            document.getElementById('adminPasswordInput').value = '';
+            document.getElementById('deleteConfirmationModal').classList.add('hidden');
+        }
+
+        function confirmDeleteUser() {
+            const password = document.getElementById('adminPasswordInput').value.trim();
+            const currentUser = getCurrentUser();
+
+            if (!password) {
+                alertMessage("Please enter your password to confirm.", "error");
+                return;
+            }
+
+            if (userToDeleteId === null) {
+                alertMessage("Error: No user selected for deletion.", "error");
+                cancelDelete();
+                return;
+            }
+            
+            fetch('api_admin_users.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    action: 'delete', 
+                    id: userToDeleteId,
+                    password: password 
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alertMessage('User deleted successfully.', "info");
+                    fetchUsers();
+                    logAction("Deleted User", `User ID: ${userToDeleteId}`);
+                } else {
+                    alertMessage('Error deleting user: ' + (data.error || 'Unknown error'), "error");
+                }
+                cancelDelete();
+            })
+            .catch(err => {
+                alertMessage('Connection error: ' + err.message, "error");
+                cancelDelete();
+            });
+        }
+
+        function renderLogsTable() {
+            const tbody = document.getElementById('logsTableBody');
+            tbody.innerHTML = '';
+            
+            if (SYSTEM_LOGS.length === 0) {
+               tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">No logs found.</td></tr>';
+               return;
+            }
+
+            SYSTEM_LOGS.forEach(log => {
+                tbody.innerHTML += `
+                    <tr class="border-b hover:bg-gray-50 transition text-sm">
+                        <td class="p-3 font-mono text-gray-500 text-xs text-center border-r border-gray-100">${log.id}</td>
+                        <td class="p-3 font-semibold text-gray-700 border-r border-gray-100">${log.user_name}</td>
+                         <td class="p-3 border-r border-gray-100">
+                            <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs border border-blue-100 font-medium">${log.action}</span>
+                        </td>
+                        <td class="p-3 text-gray-600 border-r border-gray-100">${log.target}</td>
+                        <td class="p-3 text-gray-500 text-xs">${log.timestamp}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        function toggleCreateUserForm(show) {
+            const formContainer = document.getElementById('createUserFormContainer');
+            if(show) {
+                formContainer.classList.remove('hidden');
+                toggleRoleFields(); // Ensure correct state on open
+            } else {
+                formContainer.classList.add('hidden');
+            }
+        }
+
+        function toggleRoleFields() {
+            const role = document.getElementById('newUserRole').value;
+            const isViewer = role === 'Beneficiary (Viewer)';
+            
+            const designationContainer = document.getElementById('designationFieldContainer');
+            const ageContainer = document.getElementById('ageFieldContainer');
+            const positionInput = document.getElementById('newUserPosition');
+            const ageInput = document.getElementById('newUserAge');
+
+            if (isViewer) {
+                designationContainer.classList.add('hidden');
+                positionInput.removeAttribute('required');
+                
+                ageContainer.classList.remove('hidden');
+                ageInput.setAttribute('required', 'required');
+            } else {
+                designationContainer.classList.remove('hidden');
+                positionInput.setAttribute('required', 'required');
+                
+                ageContainer.classList.add('hidden');
+                ageInput.removeAttribute('required');
+            }
+        }
+
+        function handleCreateUser(e) {
+            e.preventDefault();
+            const name = document.getElementById('newUserName').value.trim();
+            const email = document.getElementById('newUserEmail').value.trim();
+            const role = document.getElementById('newUserRole').value;
+            const password = document.getElementById('newUserPassword').value;
+            const contact = document.getElementById('newUserContact').value.trim();
+            const age = document.getElementById('newUserAge').value;
+            const position = document.getElementById('newUserPosition').value;
+
+            // Simple name split
+            const nameParts = name.split(' ');
+            const firstName = nameParts[0];
+            const surname = nameParts.slice(1).join(' ') || 'User';
+
+            // Prepare payload based on role
+            const isViewer = role === 'Beneficiary (Viewer)';
+            
+            const payload = {
+                action: 'create',
+                firstName: firstName,
+                surname: surname,
+                email: email,
+                password: password,
+                role: role // 'Beneficiary (Viewer)', 'System Administrator', or 'Barangay Official'
+            };
+
+            if (isViewer) {
+                 payload.type = 'viewer';
+                 payload.age = age;
+                 payload.contact = contact;
+                 // Viewers created by admin are auto-approved members without specific household head link initially
+                 // unless we add those fields. For now, basic registration.
+                 payload.isMember = 0; 
+            } else {
+                 payload.type = 'official';
+                 // For officials, role is saved in the 'role' column
+            }
+            
+            fetch('api_admin_users.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alertMessage(`Account created successfully for ${name}!`, "info");
+                    fetchUsers(); // Refresh list
+                    toggleCreateUserForm(false);
+                    e.target.reset();
+                    
+                    // Add log entry
+                    logAction("Created User", `User: ${name} (${role})`);
+                } else {
+                    alertMessage('Error creating account: ' + (data.error || 'Unknown error'), "error");
+                }
+            })
+            .catch(err => {
+                alertMessage('Connection error: ' + err.message, "error");
+            });
+        }
+
+        function approveUser(id) {
+            fetch('api_admin_users.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'approve', id: id })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alertMessage('User approved successfully.', "info");
+                    fetchUsers();
+                    logAction("Approved User", `User ID: ${id}`);
+                } else {
+                    alertMessage('Error approving user: ' + (data.error || 'Unknown error'), "error");
+                }
+            })
+            .catch(err => alertMessage('Connection error: ' + err.message, "error"));
+        }
+
+        function closeMessageModal() {
+            document.getElementById('messageViewerModal').classList.add('hidden');
+        }
+
+        // --- MODAL & NOTIFICATION FUNCTIONS ---
+
+        const universalModal = document.getElementById('universalModal');
+        const modalContentWrapper = document.getElementById('modalContentWrapper');
+        const modalBody = document.getElementById('modalBody');
+
+        window.showModal = (contentHTML, maxWidthClass = 'max-w-xl') => {
+            const universalModal = document.getElementById('universalModal');
+            const modalBody = document.getElementById('modalBody');
+            const modalContentWrapper = document.getElementById('modalContentWrapper');
+            
+            modalBody.innerHTML = contentHTML;
+            document.body.classList.add('overflow-hidden'); 
+
+            const maxWClasses = ['max-w-xl', 'max-w-3xl', 'max-w-4xl', 'max-w-2xl', 'max-w-lg', 'max-w-md']; 
+            if (modalContentWrapper) {
+                 maxWClasses.forEach(c => modalContentWrapper.classList.remove(c));
+                 modalContentWrapper.classList.add(maxWidthClass);
+            }
+            
+            universalModal.classList.remove('invisible', 'opacity-0');
+            universalModal.classList.add('visible', 'opacity-100');
+            lucide.createIcons(); 
+        };
+
+        window.hideModal = () => {
+             const universalModal = document.getElementById('universalModal');
+             const modalBody = document.getElementById('modalBody');
+
+            document.body.classList.remove('overflow-hidden');
+            universalModal.classList.remove('visible', 'opacity-100');
+            universalModal.classList.add('invisible', 'opacity-0');
+            setTimeout(() => { modalBody.innerHTML = ''; }, 300);
+        };
+
+        window.alertMessage = (message, type = 'info') => {
+            const colors = {
+                info: { bg: 'bg-blue-50', border: 'border-blue-500', text: 'text-blue-800' },
+                error: { bg: 'bg-red-50', border: 'border-red-500', text: 'text-red-800' }
+            };
+            const style = colors[type];
+            showModal(`
+                <h2 class="text-2xl font-bold ${style.text} mb-2">${type === 'error' ? 'Error' : 'Notification'}</h2>
+                <p class="text-sm text-gray-500 mb-4">System Message:</p>
+                <div class="p-4 ${style.bg} rounded-lg border-l-4 ${style.border}">
+                    <p class="${style.text}">${message}</p>
+                </div>
+                <button onclick="hideModal()" class="mt-6 w-full bg-gray-500 text-white font-semibold py-2 rounded-lg hover:bg-gray-600 transition">
+                    Dismiss
+                </button>
+            `, 'max-w-md');
+        };
+        
+        function renderInbox() {
+            const container = document.getElementById('inboxContainer');
+            container.innerHTML = '';
+
+            if (MOCK_INBOX.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-center py-4">No new concerns.</p>';
+                return;
+            }
+
+            MOCK_INBOX.forEach(msg => {
+                const readClass = msg.read ? 'bg-white opacity-75' : 'bg-white';
+                const statusBadge = msg.read ? '<span class="text-xs text-gray-400 border border-gray-200 px-2 py-0.5 rounded">Read</span>' : '<span class="text-xs text-white bg-red-500 px-2 py-0.5 rounded font-bold">New</span>';
+                
+                const { text } = getCategoryColorStyle(msg.category);
+
+                container.innerHTML += `
+                    <div onclick="viewMessage(${msg.id})" class="p-4 rounded-lg shadow-sm border border-gray-200 mb-3 hover:shadow-md transition cursor-pointer ${readClass}">
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] font-bold uppercase tracking-wide ${text}">${msg.category}</span>
+                                <span class="text-xs text-gray-400">• ${msg.date}</span>
+                            </div>
+                            ${statusBadge}
+                        </div>
+                        <h4 class="font-bold text-gray-800 mb-1">${msg.subject}</h4>
+                        <p class="text-xs text-gray-500 mb-2">From: ${msg.sender}</p>
+                        <p class="text-sm text-gray-700 line-clamp-2 bg-gray-50 p-2 rounded border border-gray-100">${msg.message}</p>
+                        <span class="text-primary-light text-xs font-semibold mt-2 hover:underline flex items-center">
+                            View Full Details
+                        </span>
+                    </div>
+                `;
+            });
+        }
+
+        function viewMessage(id) {
+            const msg = MOCK_INBOX.find(m => m.id === id);
+            if (msg) {
+                document.getElementById('messageSubject').textContent = msg.subject;
+                document.getElementById('messageSender').textContent = msg.sender;
+                document.getElementById('messageDate').textContent = msg.date;
+                document.getElementById('messageBody').textContent = msg.message;
+
+                const { text } = getCategoryColorStyle(msg.category);
+                
+                const categoryBadge = document.getElementById('messageCategoryBadge');
+                categoryBadge.textContent = msg.category;
+                categoryBadge.className = `text-xs font-bold uppercase tracking-wide ${text}`;
+
+                document.getElementById('messageViewerModal').classList.remove('hidden');
+                
+                if (!msg.read) {
+                    msg.read = true;
+                    renderInbox();
+                }
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            
+            // Update Admin ID from storage
+            const currentUser = getCurrentUser();
+            const adminId = currentUser.id ? String(currentUser.id) : '001';
+            const adminIdDisplay = document.getElementById('userIdDisplay');
+            if(adminIdDisplay) {
+                adminIdDisplay.innerHTML = `User ID: <strong class="text-white">admin_${adminId}</strong>`;
+            }
+
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const target = link.getAttribute('data-target');
+                    if(target) switchContent(target, link);
+                });
+            });
+
+            fetchUsers(); // Load users from API
+            // renderUserTable(); // Called by fetchUsers
+            fetchLogs(); // Load logs
+            renderInbox();
+
+            const adminLink = document.querySelector('[data-target="AdminManagement"]');
+            if(adminLink) switchContent('AdminManagement', adminLink);
+
+            const defaultTab = document.querySelector('.admin-tab[data-target="admin-users"]');
+            if (defaultTab) {
+                window.switchAdminTab('admin-users', defaultTab);
+            }
+            
+            lucide.createIcons();
+        });
+    </script>
+</head>
+<body class="bg-gray-100 p-4">
+
+    <button id="menuButton" onclick="toggleSidebar()" class="lg:hidden fixed bottom-4 left-4 z-50 p-4 bg-primary-dark text-white rounded-full shadow-xl transition duration-300 transform hover:scale-105 active:scale-95">
+        Menu
+    </button>
+    <div id="sidebarOverlay" onclick="toggleSidebar()" class="lg:hidden fixed inset-0 bg-gray-900 bg-opacity-50 z-30 transition-opacity duration-300 opacity-0 pointer-events-none"></div>
+
+    <div class="flex w-full h-[calc(100vh-2rem)]">
+
+        <aside id="sidebar" class="w-70 bg-gradient-to-b from-primary-dark to-primary-deep flex-shrink-0 h-full overflow-y-auto flex flex-col shadow-xl fixed top-0 left-0 z-40 transform -translate-x-full transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 lg:rounded-lg lg:h-full">
+            <div class="p-6 pt-8 pb-4 border-b border-white/20">
+                <h1 class="text-white text-2xl font-extrabold uppercase tracking-wide">PDRIMS</h1>
+                <p class="text-white/70 text-sm mt-1">Barangay Recovery System</p>
+            </div>
+
+            <nav class="flex-grow mt-4 space-y-1">
+                <a href="#" class="nav-link" data-target="Dashboard">
+                    <i data-lucide="home" class="nav-link-icon"></i>
+                    Dashboard
+                </a>
+                <a href="#" class="nav-link" data-target="HouseholdProfiles">
+                    <i data-lucide="users-round" class="nav-link-icon"></i>
+                    Household Profiles
+                </a>
+                <a href="#" class="nav-link" data-target="AidDistributionRecords">
+                    <i data-lucide="hand-helping" class="nav-link-icon"></i>
+                    Aid Distribution
+                </a>
+                
+                <a href="#" class="nav-link active" data-target="AdminManagement">
+                    <i data-lucide="shield-check" class="nav-link-icon"></i>
+                    Admin Management
+                </a>
+
+                <a href="#" class="nav-link" data-target="ReportsExports">
+                    <i data-lucide="file-text" class="nav-link-icon"></i>
+                    Reports & Exports
+                </a>
+                
+                <a href="#" onclick="confirmLogout()" class="nav-link mt-4 hover:bg-red-800/50">
+                    <i data-lucide="log-out" class="nav-link-icon"></i>
+                    Logout
+                </a>
+            </nav>
+
+            <div class="p-6 text-xs text-white/70 border-t border-white/10">
+                <p id="userIdDisplay">User ID: <strong class="text-white">admin-001</strong></p>
+                <p class="mt-1 flex items-center">
+                    <span class="w-2 h-2 rounded-full bg-blue-400 mr-2"></span>
+                    System Administrator
+                </p>
+            </div>
+        </aside>
+
+        <div class="flex-grow w-full lg:ml-4 h-full overflow-hidden">
+            <main id="main-content" class="h-full p-8 bg-gradient-to-br from-white to-gray-50 shadow-xl rounded-lg overflow-y-auto">
+           
+                <header class="mb-4 pb-4 border-b border-gray-200 flex justify-between items-center">
+                    <div>
+                        <h1 class="text-3xl font-extrabold text-primary-dark" id="mainTitle">Admin Management</h1>
+                        <p class="text-gray-500 mt-1">Manage users, approvals, and citizen concerns.</p>
+                    </div>
+                    <div class="text-sm font-semibold text-gray-700 bg-blue-100 text-blue-800 px-4 py-2 rounded-md border border-blue-200 flex items-center shadow-sm">
+                        Admin Mode: Active
+                    </div>
+                </header>
+
+                <section id="AdminManagement" class="content-section">
+                    
+                    <div class="flex relative z-10 -mb-px">
+                        <div data-target="admin-users" class="admin-tab active-tab" onclick="switchAdminTab('admin-users', this)">
+                            User Accounts
+                        </div>
+                        <div data-target="admin-logs" class="admin-tab inactive-tab" onclick="switchAdminTab('admin-logs', this)">
+                            System Log
+                        </div>
+                        <div data-target="admin-inbox" class="admin-tab inactive-tab" onclick="switchAdminTab('admin-inbox', this)">
+                            Inbox <span class="ml-2 bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full">New</span>
+                        </div>
+                        <div class="flex-grow border-b border-gray-200"></div>
+                    </div>
+                    
+                    <div class="bg-white p-8 rounded-b-lg rounded-tr-lg border border-gray-200 shadow-xl min-h-[500px]">
+                        
+                        <div id="admin-users" class="tab-content">
+                            <div class="flex justify-between items-center mb-6">
+                                <div>
+                                    <h2 class="text-xl font-bold text-gray-800">Account Management</h2>
+                                    <p class="text-xs text-gray-500">Manage system access for officials and residents.</p>
+                                </div>
+                                <div class="flex space-x-3">
+                                    <button onclick="scrollToPendingAccounts()" class="bg-aid-color text-white px-4 py-2 rounded-md shadow-md hover:bg-aid-color-dark transition flex items-center">
+                                         Account Requests (<span id="pendingCountButton">0</span>)
+                                    </button>
+                                    <button onclick="toggleCreateUserForm(true)" class="bg-gradient-to-r from-primary-deep to-primary-light text-white px-4 py-2 rounded-md shadow-md hover:shadow-lg transition flex items-center">
+                                         Create Account
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div id="createUserFormContainer" class="hidden mb-6 bg-green-50 border border-primary-light/50 p-6 rounded-lg shadow-inner">
+                                <div class="flex justify-between items-center mb-4">
+                                    <h3 class="font-bold text-gray-900" id="createAccountTitle">Create New Account</h3>
+                                    <button onclick="toggleCreateUserForm(false)" class="text-gray-600 hover:text-gray-800">Close</button>
+                                </div>
+                                <form onsubmit="handleCreateUser(event)" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    
+                                    <div>
+                                        <label class="block text-xs font-semibold text-gray-800 uppercase mb-1">Full Name</label>
+                                        <input type="text" id="newUserName" required class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-primary-light outline-none text-black" placeholder="e.g. Juan Dela Cruz">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-semibold text-gray-800 uppercase mb-1">Email Address (for Login)</label>
+                                        <input type="email" id="newUserEmail" required class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-primary-light outline-none text-black" placeholder="e.g. juan@barangay.gov.ph">
+                                    </div>
+                                    
+                                    <div id="designationFieldContainer">
+                                        <label class="block text-xs font-semibold text-gray-800 uppercase mb-1">Barangay Position/Designation <span class="text-red-500">*</span></label>
+                                        <input type="text" id="newUserPosition" required class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-primary-light outline-none text-black" placeholder="e.g. Kagawad (Disaster Committee)">
+                                        <p class="text-[10px] text-gray-600 mt-1">Required for Barangay Official accounts.</p>
+                                    </div>
+                                    
+                                    <div id="ageFieldContainer" class="hidden">
+                                        <label class="block text-xs font-semibold text-gray-800 uppercase mb-1">Age <span class="text-red-500">*</span></label>
+                                        <input type="number" id="newUserAge" class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-primary-light outline-none text-black" placeholder="e.g., 34">
+                                        <p class="text-[10px] text-gray-600 mt-1">Required for Resident accounts.</p>
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-xs font-semibold text-gray-800 uppercase mb-1">Contact Number</label>
+                                        <input type="tel" id="newUserContact" required class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-primary-light outline-none text-black" placeholder="e.g. 09XX-XXX-XXXX">
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-xs font-semibold text-gray-800 uppercase mb-1">System Role</label>
+                                        <select id="newUserRole" onchange="toggleRoleFields()" class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-primary-light outline-none text-black">
+                                            <option value="Barangay Official">Barangay Official (Encoder)</option>
+                                            <option value="System Administrator">System Administrator</option>
+                                            <option value="Beneficiary (Viewer)">Beneficiary (Viewer)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-semibold text-gray-800 uppercase mb-1">Temporary Password</label>
+                                        <input type="password" id="newUserPassword" required class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-primary-light outline-none text-black" placeholder="********">
+                                    </div>
+
+                                    <div class="md:col-span-2 mt-2">
+                                        <button type="submit" class="w-full bg-primary-dark text-white font-bold py-2 rounded hover:bg-primary-deep transition shadow-md">
+                                            Finalize Account Creation
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                            
+                            <div id="pendingAccountsSection" class="pending-section-collapsible overflow-hidden mb-8">
+                                <h3 class="text-xl font-bold text-red-600 mb-3">
+                                    🚨 Pending Accounts
+                                </h3>
+                                <p class="text-sm text-red-700 mb-3">Accounts in this section require **immediate review and approval** to gain system access.</p>
+                                <div class="bg-red-50 rounded-lg shadow border border-red-200 overflow-hidden">
+                                    <table class="min-w-full divide-y divide-red-200">
+                                        <thead class="bg-red-100">
+                                            <tr>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-red-800 uppercase tracking-wider">User Profile</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-red-800 uppercase tracking-wider">Contact Info</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-red-800 uppercase tracking-wider">Role</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-red-800 uppercase tracking-wider">Status & Activity</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-red-800 uppercase tracking-wider">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="pendingTableBody" class="bg-white divide-y divide-gray-200">
+                                            </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <hr class="my-8 border-gray-200">
+
+                            <div class="mb-8">
+                                <h3 class="text-lg font-bold text-primary-dark mb-3">
+                                    Active Official & Administrator Accounts
+                                </h3>
+                                <div class="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+                                    <table class="min-w-full divide-y divide-gray-200">
+                                        <thead class="bg-gray-50">
+                                            <tr>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User Profile</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact Info</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status & Activity</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="officialsTableBody" class="bg-white divide-y divide-gray-200">
+                                            </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div>
+                                <h3 class="text-lg font-bold text-aid-color-dark mb-3">
+                                    Active Resident & Beneficiary Viewer Accounts
+                                </h3>
+                                <p class="text-xs text-gray-500 mb-3">These accounts have limited access, typically for viewing their own profiles and aid records.</p>
+                                <div class="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+                                    <table class="min-w-full divide-y divide-gray-200">
+                                        <thead class="bg-gray-50">
+                                            <tr>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User Profile</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact Info</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status & Activity</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="residentsTableBody" class="bg-white divide-y divide-gray-200">
+                                            </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="admin-logs" class="tab-content hidden">
+                            <div class="flex justify-between items-center mb-6">
+                                <div>
+                                    <h2 class="text-xl font-bold text-gray-800">System Log</h2>
+                                    <p class="text-xs text-gray-500">Track data modifications and user activities for accountability.</p>
+                                </div>
+                                <button class="text-gray-500 hover:text-gray-700 bg-white border border-gray-300 px-3 py-1 rounded shadow-sm text-xs">
+                                    Export Logs
+                                </button>
+                            </div>
+
+                            <div class="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+                                <table class="min-w-full divide-y divide-gray-200">
+                                    <thead class="bg-gray-100">
+                                        <tr>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Log ID</th>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Target Data</th>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Timestamp</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="logsTableBody" class="bg-white divide-y divide-gray-200">
+                                        </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div id="admin-inbox" class="tab-content hidden">
+                            <div class="flex justify-between items-center mb-6">
+                                <div>
+                                    <h2 class="text-xl font-bold text-gray-800">Inbox & Feedback</h2>
+                                    <p class="text-xs text-gray-500">Reports submitted by registered beneficiaries.</p>
+                                </div>
+                                <div class="bg-gray-100 px-3 py-1 rounded-full text-xs text-gray-500">Sort by: Newest First</div>
+                            </div>
+
+                            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                <div class="lg:col-span-2 space-y-4" id="inboxContainer">
+                                    </div>
+                                
+                                <div class="hidden lg:block bg-blue-50 p-6 rounded-lg border border-blue-100 h-fit">
+                                    <h3 class="font-bold text-blue-900 mb-2">
+                                        Inbox Policy
+                                    </h3>
+                                    <p class="text-sm text-blue-800 mb-4 text-justify">
+                                        This module facilitates communication between residents and the LGU. 
+                                        Prioritize <strong>"Unrecorded Damage"</strong> reports to ensure accurate aid allocation.
+                                    </p>
+                                    <div class="w-full h-px bg-blue-200 my-4"></div>
+                                    <div class="space-y-3">
+                                        <div class="flex items-start text-sm text-blue-800">
+                                            <span><strong>Critical:</strong> Infrastructure damage reports require on-site validation within 24 hours.</span>
+                                        </div>
+                                        <div class="flex items-start text-sm text-blue-800">
+                                            <span><strong>Inquiries:</strong> Respond to aid schedule questions to prevent misinformation.</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                    </div>
+                </section>
+
+                <section id="Dashboard" class="content-section hidden">
+                    <div class="h-64 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
+                        <p class="text-gray-400 font-medium">Dashboard Content Hidden</p>
+                    </div>
+                </section>
+
+                <section id="HouseholdProfiles" class="content-section hidden">
+                    <div class="h-64 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
+                        <p class="text-gray-400 font-medium">Household Profiles Content Hidden</p>
+                    </div>
+                </section>
+
+                <section id="AidDistributionRecords" class="content-section hidden">
+                    <div class="h-64 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
+                        <p class="text-gray-400 font-medium">Aid Distribution Content Hidden</p>
+                    </div>
+                </section>
+
+                <section id="ReportsExports" class="content-section hidden">
+                    <div class="h-64 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
+                        <p class="text-gray-400 font-medium">Reports Content Hidden</p>
+                    </div>
+                </section>
+
+            </main>
+        </div>
+    </div>
+
+    <div id="deleteConfirmationModal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm transform transition-all">
+            <div class="flex items-center text-red-600 mb-4">
+                <h3 class="text-lg font-bold">Confirm Account Deletion</h3>
+            </div>
+            
+            <p class="text-sm text-gray-700 mb-4">
+                You are about to permanently delete the account for <strong id="deleteUserName" class="text-red-700"></strong>. This action is irreversible and will be logged.
+            </p>
+            
+            <p class="text-sm text-gray-800 font-semibold mb-2">
+                To proceed, please enter your Password:
+            </p>
+            
+            <input type="password" id="adminPasswordInput" placeholder="Enter your password" class="w-full p-2 mb-4 border border-gray-300 rounded focus:ring-2 focus:ring-red-500 outline-none text-black">
+            
+            <div class="flex justify-end space-x-3">
+                <button onclick="cancelDelete()" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition">
+                    Cancel
+                </button>
+                <button onclick="confirmDeleteUser()" class="px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition flex items-center">
+                    Confirm Delete
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="messageViewerModal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto transform transition-all">
+            
+            <div class="flex justify-between items-start border-b border-gray-100 pb-4 mb-4">
+                <div class="flex flex-col">
+                    <span id="messageCategoryBadge" class="text-xs font-bold uppercase tracking-wide">
+                        Category Placeholder
+                    </span>
+                    <h3 id="messageSubject" class="text-2xl font-extrabold text-gray-900 mt-2">Subject Placeholder</h3>
+                </div>
+                <button onclick="closeMessageModal()" class="text-gray-400 hover:text-gray-600 transition p-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+            </div>
+
+            <div class="mb-6 grid grid-cols-2 gap-4 text-sm text-gray-700">
+                <div>
+                    <p class="text-xs font-semibold uppercase text-gray-500 mb-0.5">Sender</p>
+                    <p id="messageSender" class="font-medium text-gray-800 text-base">Sender Placeholder</p>
+                </div>
+                <div>
+                    <p class="text-xs font-semibold uppercase text-gray-500 mb-0.5">Date Received</p>
+                    <p id="messageDate" class="font-medium text-gray-800 text-base">Date Placeholder</p>
+                </div>
+            </div>
+
+            <hr class="my-4 border-gray-200">
+            
+            <div id="messageBody" class="text-base text-gray-700 whitespace-pre-wrap leading-relaxed">
+                Message Body Placeholder
+            </div>
+            
+            <div class="flex justify-end pt-6">
+                <button onclick="closeMessageModal()" class="px-6 py-2 bg-primary-dark text-white rounded-lg font-medium hover:bg-primary-deep transition shadow-md">
+                    Close & Acknowledge
+                </button>
+            </div>
+        </div>
+    </div>
+    <!-- Universal Modal -->
+    <div id="universalModal" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900 bg-opacity-60 invisible opacity-0 transition-all duration-300">
+        <div id="modalContentWrapper" class="bg-white rounded-xl shadow-2xl w-full max-w-xl mx-4 transform transition-all p-6 relative">
+            <button id="closeModalButton" onclick="hideModal()" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 focus:outline-none">
+                <i data-lucide="x" class="w-6 h-6"></i>
+            </button>
+            <div id="modalBody">
+                <!-- Modal content injected via JS -->
+            </div>
+        </div>
+    </div>
+    </body>
+</html>
